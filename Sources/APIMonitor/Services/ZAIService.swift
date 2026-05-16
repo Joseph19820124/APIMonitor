@@ -3,10 +3,7 @@ import Foundation
 // z.ai 没有官方用量 API，做客户端累计追踪
 struct ZAIService: ProviderService {
     func fetchUsage(apiKey: String) async throws -> UsageData {
-        // 尝试请求一次 balance 接口，验证 key 是否有效
-        let url = URL(string: "https://api.z.ai/api/paas/v4/models")!
-        let _: ZAIModelsResponse = try await URLSession.shared.fetchJSON(
-            url, headers: ["Authorization": "Bearer \(apiKey)"])
+        try await validateAPIKey(apiKey)
 
         // 从本地缓存读取累计数据
         let cached = ZAILocalTracker.load()
@@ -20,6 +17,29 @@ struct ZAIService: ProviderService {
             topModel: cached.topModel,
             dailySpend: cached.dailySpend
         )
+    }
+
+    private func validateAPIKey(_ apiKey: String) async throws {
+        let headers = ["Authorization": "Bearer \(apiKey.trimmingCharacters(in: .whitespacesAndNewlines))"]
+        let endpoints = [
+            "https://api.z.ai/api/paas/v4/models",
+            "https://api.z.ai/api/coding/paas/v4/models"
+        ]
+        var lastError: Error?
+
+        for endpoint in endpoints {
+            do {
+                guard let url = URL(string: endpoint) else { continue }
+                let _: ZAIModelsResponse = try await URLSession.shared.fetchJSON(url, headers: headers)
+                return
+            } catch {
+                lastError = error
+            }
+        }
+
+        if let lastError {
+            throw lastError
+        }
     }
 }
 

@@ -30,7 +30,31 @@ extension URLSession {
         headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
         let (data, resp) = try await data(for: req)
         guard let http = resp as? HTTPURLResponse else { throw APIError.decodingError }
-        guard (200..<300).contains(http.statusCode) else { throw APIError.httpError(http.statusCode) }
+        guard (200..<300).contains(http.statusCode) else {
+            if let apiError = try? JSONDecoder().decode(ServiceErrorResponse.self, from: data) {
+                throw APIError.serviceMessage(apiError.displayMessage(statusCode: http.statusCode))
+            }
+            throw APIError.httpError(http.statusCode)
+        }
         return try JSONDecoder().decode(T.self, from: data)
+    }
+}
+
+private struct ServiceErrorResponse: Decodable {
+    let error: ServiceError?
+    let msg: String?
+    let message: String?
+
+    func displayMessage(statusCode: Int) -> String {
+        let detail = error?.message ?? message ?? msg
+        guard let detail, !detail.isEmpty else {
+            return "HTTP \(statusCode)"
+        }
+        return "HTTP \(statusCode): \(detail)"
+    }
+
+    struct ServiceError: Decodable {
+        let code: String?
+        let message: String?
     }
 }

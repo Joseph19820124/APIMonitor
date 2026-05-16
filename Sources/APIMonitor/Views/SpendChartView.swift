@@ -6,10 +6,11 @@ struct SpendChartView: View {
 
     var points: [UsageData.DailyPoint] { vm.currentUsage.dailySpend }
     var color: Color { vm.selectedProvider.color }
+    var isCodex: Bool { vm.selectedProvider == .codex }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("30-day Spend")
+            Text(isCodex ? "30-day Tokens" : "30-day Spend")
                 .font(.caption).foregroundColor(.gray)
 
             if points.isEmpty {
@@ -21,7 +22,7 @@ struct SpendChartView: View {
                 Chart(points) { point in
                     BarMark(
                         x: .value("Date", point.date, unit: .day),
-                        y: .value("Spend", point.spend)
+                        y: .value(isCodex ? "Tokens" : "Spend", point.spend)
                     )
                     .foregroundStyle(color.gradient)
                     .cornerRadius(3)
@@ -41,7 +42,9 @@ struct SpendChartView: View {
                     AxisMarks(position: .leading) { value in
                         AxisValueLabel {
                             if let v = value.as(Double.self) {
-                                Text(shortUSD(v)).font(.system(size: 9)).foregroundColor(.gray)
+                                Text(isCodex ? shortTokens(Int(v)) : shortUSD(v))
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.gray)
                             }
                         }
                     }
@@ -57,5 +60,12 @@ struct SpendChartView: View {
     private func shortUSD(_ v: Double) -> String {
         if v >= 1000 { return "$\(Int(v/1000))k" }
         return "$\(Int(v))"
+    }
+
+    private func shortTokens(_ v: Int) -> String {
+        if v >= 1_000_000_000 { return "\(v / 1_000_000_000)B" }
+        if v >= 1_000_000 { return "\(v / 1_000_000)M" }
+        if v >= 1_000 { return "\(v / 1_000)K" }
+        return "\(v)"
     }
 }

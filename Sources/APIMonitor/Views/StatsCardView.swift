@@ -5,28 +5,29 @@ struct StatsCardView: View {
 
     var usage: UsageData { vm.currentUsage }
     var color: Color { vm.selectedProvider.color }
+    var isCodex: Bool { vm.selectedProvider == .codex }
 
     var body: some View {
         VStack(spacing: 0) {
             // 主卡片：今日 + 7天
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Today").font(.caption).foregroundColor(.gray)
-                    Text(formatUSD(usage.todaySpend))
+                    Text(isCodex ? "Today tokens" : "Today").font(.caption).foregroundColor(.gray)
+                    Text(isCodex ? formatTokens(Int(usage.todaySpend)) : formatUSD(usage.todaySpend))
                         .font(.system(size: 26, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                    Text("30d spend").font(.caption).foregroundColor(.gray).padding(.top, 4)
-                    Text(formatUSD(usage.thirtyDaySpend))
+                    Text(isCodex ? "30d tokens" : "30d spend").font(.caption).foregroundColor(.gray).padding(.top, 4)
+                    Text(isCodex ? formatTokens(Int(usage.thirtyDaySpend)) : formatUSD(usage.thirtyDaySpend))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white.opacity(0.9))
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 4) {
-                    Text("7d spend").font(.caption).foregroundColor(.gray)
-                    Text(formatUSD(usage.sevenDaySpend))
+                    Text(isCodex ? "7d tokens" : "7d spend").font(.caption).foregroundColor(.gray)
+                    Text(isCodex ? formatTokens(Int(usage.sevenDaySpend)) : formatUSD(usage.sevenDaySpend))
                         .font(.system(size: 18, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
-                    Text("Today req").font(.caption).foregroundColor(.gray).padding(.top, 4)
+                    Text(isCodex ? "Today sessions" : "Today req").font(.caption).foregroundColor(.gray).padding(.top, 4)
                     Text(formatCount(usage.todayRequests))
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.white.opacity(0.9))
@@ -43,7 +44,7 @@ struct StatsCardView: View {
             HStack(spacing: 0) {
                 StatPill(label: "30d tokens", value: formatTokens(usage.thirtyDayTokens))
                 Divider().frame(height: 24).background(Color.white.opacity(0.1))
-                StatPill(label: "30d requests", value: formatCount(usage.thirtyDayRequests))
+                StatPill(label: isCodex ? "30d sessions" : "30d requests", value: formatCount(usage.thirtyDayRequests))
                 if !usage.topModel.isEmpty {
                     Divider().frame(height: 24).background(Color.white.opacity(0.1))
                     StatPill(label: "Top model", value: shortModelName(usage.topModel))

@@ -1,202 +1,182 @@
 import Foundation
 
 struct CodexService: ProviderService {
-    private let base = "https://api.openai.com/v1"
+    private let fileManager = FileManager.default
 
     func fetchUsage(apiKey: String) async throws -> UsageData {
-        let token = try loadCodexAccessToken()
-        let cal = Calendar.current
-        let now = Date()
-        let todayStart = cal.startOfDay(for: now)
-        let thirtyAgo = cal.date(byAdding: .day, value: -30, to: todayStart)!
-        let sevenAgo = cal.date(byAdding: .day, value: -7, to: todayStart)!
-        let start = Int(thirtyAgo.timeIntervalSince1970)
-        let end = Int(now.timeIntervalSince1970)
-        let headers = ["Authorization": "Bearer \(token)"]
+        try verifyCodexLogin()
 
-        let costsURL = try makeURL(
-            path: "/organization/costs",
-            query: [
-                "start_time": "\(start)",
-                "end_time": "\(end)",
-                "bucket_width": "1d"
-            ]
-        )
-        let costs: OpenAICostsResponse = try await fetchOpenAIJSON(
-            costsURL,
-            headers: headers
-        )
-
-        let usageURL = try makeURL(
-            path: "/organization/usage/completions",
-            query: [
-                "start_time": "\(start)",
-                "end_time": "\(end)",
-                "bucket_width": "1d",
-                "group_by": "model",
-                "limit": "31"
-            ]
-        )
-        let usage: OpenAIUsageResponse = try await fetchOpenAIJSON(
-            usageURL,
-            headers: headers
-        )
-
-        let dailySpend = costs.data.compactMap { bucket -> UsageData.DailyPoint? in
-            let spend = bucket.results.reduce(0) { $0 + ($1.amount?.value ?? 0) }
-            return UsageData.DailyPoint(
-                date: Date(timeIntervalSince1970: TimeInterval(bucket.startTime)),
-                spend: spend
-            )
-        }.sorted { $0.date < $1.date }
-
-        let todaySpend = dailySpend
-            .filter { cal.isDateInToday($0.date) }
-            .reduce(0) { $0 + $1.spend }
-        let sevenDaySpend = dailySpend
-            .filter { $0.date >= sevenAgo }
-            .reduce(0) { $0 + $1.spend }
-        let thirtyDaySpend = dailySpend.reduce(0) { $0 + $1.spend }
-
-        var todayRequests = 0
-        var thirtyDayTokens = 0
-        var thirtyDayRequests = 0
-        var tokensByModel: [String: Int] = [:]
-
-        for bucket in usage.data {
-            let date = Date(timeIntervalSince1970: TimeInterval(bucket.startTime))
-            for result in bucket.results {
-                let tokens = result.inputTokens + result.outputTokens
-                let requests = result.numModelRequests
-                thirtyDayTokens += tokens
-                thirtyDayRequests += requests
-                if cal.isDateInToday(date) {
-                    todayRequests += requests
-                }
-                if let model = result.model, !model.isEmpty {
-                    tokensByModel[model, default: 0] += tokens
-                }
-            }
+        guard fileManager.fileExists(atPath: stateDatabaseURL.path) else {
+            return emptyUsage()
         }
 
-        let topModel = tokensByModel.max(by: { $0.value < $1.value })?.key ?? "Codex"
+        async let dailyRows = runSQLite("""
+            select date(created_at,'unixepoch','localtime') day,
+                   count(*),
+                   coalesce(sum(tokens_used), 0)
+            from threads
+            where created_at >= strftime('%s','now','localtime','start of day','-29 days','utc')
+            group by day
+            order by day;
+            """)
+        async let todayRow = runSQLite("""
+            select count(*), coalesce(sum(tokens_used), 0)
+            from threads
+            where created_at >= strftime('%s','now','localtime','start of day','utc');
+            """)
+        async let sevenDayRow = runSQLite("""
+            select count(*), coalesce(sum(tokens_used), 0)
+            from threads
+            where created_at >= strftime('%s','now','localtime','start of day','-6 days','utc');
+            """)
+        async let thirtyDayRow = runSQLite("""
+            select count(*), coalesce(sum(tokens_used), 0)
+            from threads
+            where created_at >= strftime('%s','now','localtime','start of day','-29 days','utc');
+            """)
+        async let topModelRow = runSQLite("""
+            select coalesce(nullif(model, ''), 'Codex') model
+            from threads
+            where created_at >= strftime('%s','now','localtime','start of day','-29 days','utc')
+            group by model
+            order by coalesce(sum(tokens_used), 0) desc
+            limit 1;
+            """)
+
+        let dailySpend = try await parseDailyRows(dailyRows)
+        let today = try await parseCountAndTokens(todayRow)
+        let sevenDay = try await parseCountAndTokens(sevenDayRow)
+        let thirtyDay = try await parseCountAndTokens(thirtyDayRow)
+        let topModel = try await topModelRow
+            .split(whereSeparator: \.isNewline)
+            .first
+            .map(String.init) ?? "Codex"
 
         return UsageData(
-            todaySpend: todaySpend,
-            sevenDaySpend: sevenDaySpend,
-            thirtyDaySpend: thirtyDaySpend,
-            todayRequests: todayRequests,
-            thirtyDayTokens: thirtyDayTokens,
-            thirtyDayRequests: thirtyDayRequests,
+            todaySpend: Double(today.tokens),
+            sevenDaySpend: Double(sevenDay.tokens),
+            thirtyDaySpend: Double(thirtyDay.tokens),
+            todayRequests: today.count,
+            thirtyDayTokens: thirtyDay.tokens,
+            thirtyDayRequests: thirtyDay.count,
             topModel: topModel,
             dailySpend: dailySpend
         )
     }
 
-    private func makeURL(path: String, query: [String: String]) throws -> URL {
-        var components = URLComponents(string: base + path)
-        components?.queryItems = query.map { URLQueryItem(name: $0.key, value: $0.value) }
-        guard let url = components?.url else { throw APIError.decodingError }
-        return url
-    }
-
-    private func fetchOpenAIJSON<T: Decodable>(_ url: URL, headers: [String: String]) async throws -> T {
-        var req = URLRequest(url: url)
-        headers.forEach { req.setValue($1, forHTTPHeaderField: $0) }
-        let (data, resp) = try await URLSession.shared.data(for: req)
-        guard let http = resp as? HTTPURLResponse else { throw APIError.decodingError }
-        guard (200..<300).contains(http.statusCode) else {
-            if http.statusCode == 401 || http.statusCode == 403 {
-                throw APIError.serviceMessage(
-                    "Codex OAuth is present, but OpenAI Usage API rejected it. Run codex login again; if this persists, this OAuth account may not expose organization usage details."
-                )
-            }
-            throw APIError.httpError(http.statusCode)
-        }
-        return try JSONDecoder().decode(T.self, from: data)
-    }
-
-    private func loadCodexAccessToken() throws -> String {
-        let authURL = FileManager.default.homeDirectoryForCurrentUser
+    private var authURL: URL {
+        fileManager.homeDirectoryForCurrentUser
             .appendingPathComponent(".codex/auth.json")
+    }
+
+    private var stateDatabaseURL: URL {
+        fileManager.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/state_5.sqlite")
+    }
+
+    private func verifyCodexLogin() throws {
         guard let data = try? Data(contentsOf: authURL),
               let auth = try? JSONDecoder().decode(CodexAuth.self, from: data),
-              let token = auth.tokens?.accessToken,
-              !token.isEmpty
+              auth.hasLogin
         else {
-            throw APIError.notLoggedIn("Codex OAuth not found. Run codex login once, then refresh.")
+            throw APIError.notLoggedIn("Codex login not found. Run codex login once, then refresh.")
         }
-        return token
+    }
+
+    private func runSQLite(_ sql: String) async throws -> String {
+        try await Task.detached {
+            let process = Process()
+            let output = Pipe()
+            let error = Pipe()
+
+            process.executableURL = URL(fileURLWithPath: "/usr/bin/sqlite3")
+            process.arguments = [stateDatabaseURL.path, "-separator", "|", sql]
+            process.standardOutput = output
+            process.standardError = error
+
+            do {
+                try process.run()
+            } catch {
+                throw APIError.serviceMessage("Could not read local Codex usage database.")
+            }
+
+            process.waitUntilExit()
+
+            let data = output.fileHandleForReading.readDataToEndOfFile()
+            let errorData = error.fileHandleForReading.readDataToEndOfFile()
+            let text = String(data: data, encoding: .utf8) ?? ""
+            let errorText = String(data: errorData, encoding: .utf8) ?? ""
+
+            guard process.terminationStatus == 0 else {
+                throw APIError.serviceMessage(
+                    errorText.isEmpty ? "Could not read local Codex usage database." : errorText
+                )
+            }
+
+            return text.trimmingCharacters(in: .whitespacesAndNewlines)
+        }.value
+    }
+
+    private func parseDailyRows(_ text: String) -> [UsageData.DailyPoint] {
+        let formatter = DateFormatter()
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = .current
+        formatter.dateFormat = "yyyy-MM-dd"
+
+        return text
+            .split(whereSeparator: \.isNewline)
+            .compactMap { line in
+                let parts = line.split(separator: "|", omittingEmptySubsequences: false)
+                guard parts.count == 3,
+                      let date = formatter.date(from: String(parts[0])),
+                      let tokens = Int(parts[2])
+                else { return nil }
+
+                return UsageData.DailyPoint(date: date, spend: Double(tokens))
+            }
+    }
+
+    private func parseCountAndTokens(_ text: String) -> (count: Int, tokens: Int) {
+        guard let line = text.split(whereSeparator: \.isNewline).first else {
+            return (0, 0)
+        }
+
+        let parts = line.split(separator: "|", omittingEmptySubsequences: false)
+        guard parts.count == 2 else { return (0, 0) }
+
+        return (Int(parts[0]) ?? 0, Int(parts[1]) ?? 0)
+    }
+
+    private func emptyUsage() -> UsageData {
+        UsageData(
+            todaySpend: 0,
+            sevenDaySpend: 0,
+            thirtyDaySpend: 0,
+            todayRequests: 0,
+            thirtyDayTokens: 0,
+            thirtyDayRequests: 0,
+            topModel: "Codex",
+            dailySpend: []
+        )
     }
 }
 
 private struct CodexAuth: Decodable {
     let tokens: Tokens?
 
+    var hasLogin: Bool {
+        guard let tokens else { return false }
+        return !(tokens.accessToken ?? "").isEmpty || !(tokens.accountID ?? "").isEmpty
+    }
+
     struct Tokens: Decodable {
         let accessToken: String?
+        let accountID: String?
 
         enum CodingKeys: String, CodingKey {
             case accessToken = "access_token"
-        }
-    }
-}
-
-private struct OpenAICostsResponse: Decodable {
-    let data: [Bucket]
-
-    struct Bucket: Decodable {
-        let startTime: Int
-        let results: [Result]
-
-        enum CodingKeys: String, CodingKey {
-            case startTime = "start_time"
-            case results
-        }
-    }
-
-    struct Result: Decodable {
-        let amount: Amount?
-    }
-
-    struct Amount: Decodable {
-        let value: Double
-        let currency: String?
-    }
-}
-
-private struct OpenAIUsageResponse: Decodable {
-    let data: [Bucket]
-
-    struct Bucket: Decodable {
-        let startTime: Int
-        let results: [Result]
-
-        enum CodingKeys: String, CodingKey {
-            case startTime = "start_time"
-            case results
-        }
-    }
-
-    struct Result: Decodable {
-        let model: String?
-        let inputTokens: Int
-        let outputTokens: Int
-        let numModelRequests: Int
-
-        enum CodingKeys: String, CodingKey {
-            case model
-            case inputTokens = "input_tokens"
-            case outputTokens = "output_tokens"
-            case numModelRequests = "num_model_requests"
-        }
-
-        init(from decoder: Decoder) throws {
-            let c = try decoder.container(keyedBy: CodingKeys.self)
-            model = try c.decodeIfPresent(String.self, forKey: .model)
-            inputTokens = try c.decodeIfPresent(Int.self, forKey: .inputTokens) ?? 0
-            outputTokens = try c.decodeIfPresent(Int.self, forKey: .outputTokens) ?? 0
-            numModelRequests = try c.decodeIfPresent(Int.self, forKey: .numModelRequests) ?? 0
+            case accountID = "account_id"
         }
     }
 }
