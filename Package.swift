@@ -8,7 +8,7 @@ let package = Package(
         .executableTarget(
             name: "APIMonitor",
             path: "Sources/APIMonitor",
-            resources: [.process("Resources")]
+            exclude: ["Resources/Info.plist"]
         )
     ]
 )
