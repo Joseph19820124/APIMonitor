@@ -13,6 +13,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         if let button = statusItem?.button {
             button.image = NSImage(systemSymbolName: "chart.bar.fill", accessibilityDescription: "API Monitor")
+            button.title = " API"
+            button.imagePosition = .imageLeading
             button.action = #selector(togglePopover)
             button.target = self
         }
@@ -27,18 +29,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // 启动时刷新所有数据
         Task { await viewModel.refreshAll() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            self?.showPopover()
+        }
     }
 
     @objc func togglePopover() {
-        guard let button = statusItem?.button else { return }
-        if let popover = popover {
-            if popover.isShown {
-                popover.performClose(nil)
-            } else {
-                popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-                popover.contentViewController?.view.window?.makeKey()
-                Task { await viewModel.refreshAll() }
-            }
+        if popover?.isShown == true {
+            popover?.performClose(nil)
+        } else {
+            showPopover()
         }
+    }
+
+    private func showPopover() {
+        guard let button = statusItem?.button else { return }
+        guard let popover else { return }
+        popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        popover.contentViewController?.view.window?.makeKey()
+        Task { await viewModel.refreshAll() }
     }
 }
