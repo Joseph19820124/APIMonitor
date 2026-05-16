@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct SettingsView: View {
@@ -20,11 +21,15 @@ struct SettingsView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     ForEach(Provider.allCases) { provider in
-                        APIKeyRow(provider: provider,
-                                  value: Binding(
-                                    get: { drafts[provider] ?? vm.apiKeys[provider] ?? "" },
-                                    set: { drafts[provider] = $0 }
-                                  ))
+                        if provider.requiresAPIKey {
+                            APIKeyRow(provider: provider,
+                                      value: Binding(
+                                        get: { drafts[provider] ?? vm.apiKeys[provider] ?? "" },
+                                        set: { drafts[provider] = $0 }
+                                      ))
+                        } else {
+                            OAuthRow(provider: provider)
+                        }
                     }
                 }
                 .padding(16)
@@ -44,6 +49,55 @@ struct SettingsView: View {
         }
         .frame(width: 380, height: 380)
         .background(Color(red: 0.11, green: 0.11, blue: 0.18))
+    }
+}
+
+struct OAuthRow: View {
+    let provider: Provider
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 6) {
+                Image(systemName: provider.icon).foregroundColor(provider.color).font(.caption)
+                Text(provider.rawValue).font(.subheadline).foregroundColor(.white)
+                Spacer()
+                Image(systemName: hasCodexLogin ? "checkmark.circle.fill" : "exclamationmark.circle.fill")
+                    .foregroundColor(hasCodexLogin ? .green : .orange)
+            }
+
+            Text(hasCodexLogin ? "Codex OAuth detected" : "Run codex login in Terminal")
+                .font(.caption)
+                .foregroundColor(.gray)
+
+            Button("Open Codex Login") {
+                openCodexLogin()
+            }
+            .buttonStyle(.borderedProminent)
+            .tint(provider.color)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 10).fill(Color.white.opacity(0.06)))
+    }
+
+    private var hasCodexLogin: Bool {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent(".codex/auth.json")
+        guard let data = try? Data(contentsOf: url),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let tokens = object["tokens"] as? [String: Any],
+              let accessToken = tokens["access_token"] as? String
+        else { return false }
+        return !accessToken.isEmpty
+    }
+
+    private func openCodexLogin() {
+        let script = """
+        tell application "Terminal"
+            activate
+            do script "codex login"
+        end tell
+        """
+        NSAppleScript(source: script)?.executeAndReturnError(nil)
     }
 }
 

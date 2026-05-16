@@ -6,6 +6,8 @@ protocol ProviderService {
 
 enum APIError: LocalizedError {
     case noAPIKey
+    case notLoggedIn(String)
+    case serviceMessage(String)
     case httpError(Int)
     case decodingError
     case notSupported
@@ -13,6 +15,8 @@ enum APIError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noAPIKey:          return "API Key not configured"
+        case .notLoggedIn(let s): return s
+        case .serviceMessage(let s): return s
         case .httpError(let c):  return "HTTP \(c)"
         case .decodingError:     return "Invalid response"
         case .notSupported:      return "Usage API not supported"

@@ -3,13 +3,13 @@ import SwiftUI
 
 @MainActor
 class DashboardViewModel: ObservableObject {
-    @Published var selectedProvider: Provider = .anthropic
+    @Published var selectedProvider: Provider = .codex
     @Published var usageMap: [Provider: UsageData] = [:]
     @Published var apiKeys: [Provider: String] = [:]
     @Published var showSettings = false
 
     private let services: [Provider: any ProviderService] = [
-        .anthropic: AnthropicService(),
+        .codex:     CodexService(),
         .minimax:   MiniMaxService(),
         .zai:       ZAIService()
     ]
@@ -30,7 +30,8 @@ class DashboardViewModel: ObservableObject {
     }
 
     func refresh(provider: Provider) async {
-        guard let key = apiKeys[provider], !key.isEmpty else {
+        let key = apiKeys[provider] ?? ""
+        guard !provider.requiresAPIKey || !key.isEmpty else {
             usageMap[provider] = UsageData(error: "API Key not configured")
             return
         }
