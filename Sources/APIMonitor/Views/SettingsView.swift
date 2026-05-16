@@ -65,11 +65,11 @@ struct OAuthRow: View {
                     .foregroundColor(hasCodexLogin ? .green : .orange)
             }
 
-            Text(hasCodexLogin ? "Codex OAuth detected" : "Run codex login in Terminal")
+            Text(hasCodexLogin ? "Codex OAuth detected" : "Click to open Terminal; paste if the command is not inserted automatically.")
                 .font(.caption)
                 .foregroundColor(.gray)
 
-            Button("Open Codex Login") {
+            Button(hasCodexLogin ? "Refresh Login" : "Open Codex Login") {
                 openCodexLogin()
             }
             .buttonStyle(.borderedProminent)
@@ -91,13 +91,21 @@ struct OAuthRow: View {
     }
 
     private func openCodexLogin() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString("codex login", forType: .string)
+
         let script = """
         tell application "Terminal"
             activate
             do script "codex login"
         end tell
         """
-        NSAppleScript(source: script)?.executeAndReturnError(nil)
+        var error: NSDictionary?
+        NSAppleScript(source: script)?.executeAndReturnError(&error)
+
+        if error != nil {
+            NSWorkspace.shared.open(URL(fileURLWithPath: "/System/Applications/Utilities/Terminal.app"))
+        }
     }
 }
 
