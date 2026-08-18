@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>杭州九溪徒步计划</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: #f0f4f0;
+      color: #2c3e2d;
+    }
+
+    header {
+      background: linear-gradient(135deg, #2d6a4f 0%, #40916c 50%, #52b788 100%);
+      color: white;
+      padding: 40px 24px 32px;
+      text-align: center;
+    }
+    header h1 { font-size: 2rem; margin-bottom: 8px; letter-spacing: 2px; }
+    header p  { font-size: 0.95rem; opacity: 0.88; }
+
+    .badge-row {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      justify-content: center; margin-top: 18px;
+    }
+    .badge {
+      background: rgba(255,255,255,0.2);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 20px; padding: 4px 14px;
+      font-size: 0.82rem;
+    }
+
+    .container { max-width: 860px; margin: 0 auto; padding: 28px 16px 60px; }
+
+    /* 路线图 */
+    .map-section { margin-bottom: 32px; }
+    .section-title {
+      font-size: 1.15rem; font-weight: 700;
+      color: #2d6a4f; margin-bottom: 14px;
+      padding-left: 10px;
+      border-left: 4px solid #52b788;
+    }
+    .map-wrap {
+      background: white; border-radius: 14px;
+      box-shadow: 0 2px 12px rgba(0,0,0,0.08);
+      padding: 20px; overflow-x: auto;
+    }
+    svg.route-map { display: block; margin: 0 auto; }
+
+    /* 信息卡片 */
+    .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 28px; }
+    .card {
+      background: white; border-radius: 12px;
+      padding: 18px 16px; text-align: center;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+    }
+    .card .icon { font-size: 1.8rem; margin-bottom: 6px; }
+    .card .label { font-size: 0.78rem; color: #888; margin-bottom: 4px; }
+    .card .value { font-size: 1.05rem; font-weight: 700; color: #2d6a4f; }
+
+    /* 行程表 */
+    .schedule { background: white; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); overflow: hidden; margin-bottom: 28px; }
+    .schedule-row {
+      display: flex; align-items: flex-start; gap: 16px;
+      padding: 18px 20px; border-bottom: 1px solid #f0f4f0;
+      transition: background .15s;
+    }
+    .schedule-row:last-child { border-bottom: none; }
+    .schedule-row:hover { background: #f7faf7; }
+    .time-col { min-width: 64px; text-align: right; }
+    .time { font-size: 0.82rem; color: #888; }
+    .dot-col { display: flex; flex-direction: column; align-items: center; padding-top: 4px; }
+    .dot { width: 12px; height: 12px; border-radius: 50%; background: #52b788; flex-shrink: 0; }
+    .dot.start { background: #2d6a4f; }
+    .dot.end   { background: #d62828; }
+    .line { width: 2px; background: #d8ead1; flex: 1; min-height: 24px; margin-top: 2px; }
+    .info-col { flex: 1; }
+    .poi-name { font-weight: 600; font-size: 0.97rem; margin-bottom: 3px; }
+    .poi-desc { font-size: 0.83rem; color: #666; line-height: 1.5; }
+    .tag {
+      display: inline-block; font-size: 0.72rem;
+      border-radius: 4px; padding: 1px 7px; margin-left: 8px; vertical-align: middle;
+    }
+    .tag-rest  { background: #fef3c7; color: #92400e; }
+    .tag-view  { background: #dbeafe; color: #1e40af; }
+    .tag-food  { background: #fce7f3; color: #9d174d; }
+
+    /* 贴士 */
+    .tips { background: white; border-radius: 14px; box-shadow: 0 2px 12px rgba(0,0,0,0.08); padding: 22px 24px; margin-bottom: 28px; }
+    .tips ul { list-style: none; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; }
+    .tips li { font-size: 0.88rem; color: #444; padding-left: 22px; position: relative; line-height: 1.55; }
+    .tips li::before { content: "✓"; position: absolute; left: 0; color: #52b788; font-weight: 700; }
+
+    /* 交通 */
+    .transport { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 28px; }
+    .transport-card { background: white; border-radius: 12px; padding: 18px 18px; box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
+    .transport-card h3 { font-size: 0.9rem; color: #2d6a4f; margin-bottom: 10px; }
+    .transport-card p  { font-size: 0.83rem; color: #555; line-height: 1.6; }
+
+    footer { text-align: center; font-size: 0.78rem; color: #aaa; padding: 20px; }
+
+    @media (max-width: 520px) {
+      .transport { grid-template-columns: 1fr; }
+      header h1 { font-size: 1.5rem; }
+    }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>🌿 杭州九溪徒步计划</h1>
+  <p>九溪烟树 · 十八涧溪 · 龙井问茶</p>
+  <div class="badge-row">
+    <span class="badge">📍 西湖景区西南</span>
+    <span class="badge">🥾 难度：轻松</span>
+    <span class="badge">📏 全程约 7 km</span>
+    <span class="badge">⏱ 3.5 ~ 4.5 小时</span>
+    <span class="badge">🌡 四季皆宜</span>
+  </div>
+</header>
+
+<div class="container">
+
+  <!-- 路线图 -->
+  <div class="map-section">
+    <div class="section-title">路线示意图</div>
+    <div class="map-wrap">
+      <svg class="route-map" width="760" height="420" viewBox="0 0 760 420" xmlns="http://www.w3.org/2000/svg">
+        <!-- 背景 -->
+        <rect width="760" height="420" fill="#e8f5e9" rx="10"/>
+
+        <!-- 山体装饰 -->
+        <polygon points="580,350 620,230 660,350" fill="#c8e6c9" opacity="0.6"/>
+        <polygon points="620,350 670,200 720,350" fill="#a5d6a7" opacity="0.5"/>
+        <polygon points="40,350  80,260 120,350" fill="#c8e6c9" opacity="0.6"/>
+        <polygon points="680,350 710,250 740,350" fill="#c8e6c9" opacity="0.5"/>
+
+        <!-- 茶园装饰 -->
+        <ellipse cx="490" cy="200" rx="40" ry="20" fill="#81c784" opacity="0.4"/>
+        <ellipse cx="540" cy="215" rx="35" ry="18" fill="#66bb6a" opacity="0.35"/>
+        <ellipse cx="420" cy="195" rx="30" ry="15" fill="#81c784" opacity="0.35"/>
+
+        <!-- 溪流（蜿蜒曲线） -->
+        <path d="M 80 360 C 110 340, 140 350, 180 330
+                       C 220 310, 240 300, 280 290
+                       C 320 280, 350 275, 390 265
+                       C 430 255, 460 250, 500 255
+                       C 530 258, 550 265, 580 260"
+              fill="none" stroke="#4fc3f7" stroke-width="5" stroke-linecap="round" opacity="0.7"/>
+        <!-- 溪流倒影 -->
+        <path d="M 80 366 C 110 346, 140 356, 180 336
+                       C 220 316, 240 306, 280 296"
+              fill="none" stroke="#81d4fa" stroke-width="2" stroke-linecap="round" opacity="0.4"/>
+
+        <!-- 步道路线 -->
+        <path d="M 80 345 C 110 320, 150 310, 190 300
+                       C 230 290, 260 280, 300 270
+                       C 340 260, 370 250, 410 245
+                       C 450 240, 490 240, 530 235
+                       C 560 232, 590 228, 620 220
+                       C 650 212, 670 200, 680 185"
+              fill="none" stroke="#2d6a4f" stroke-width="3.5"
+              stroke-dasharray="8,4" stroke-linecap="round"/>
+
+        <!-- POI 节点 -->
+        <!-- 1. 九溪牌坊 (起点) -->
+        <circle cx="80" cy="345" r="12" fill="#2d6a4f" stroke="white" stroke-width="2.5"/>
+        <text x="80" y="349.5" text-anchor="middle" fill="white" font-size="11" font-weight="bold">起</text>
+        <rect x="16" y="290" width="88" height="40" rx="6" fill="white" opacity="0.92"/>
+        <text x="60" y="308" text-anchor="middle" fill="#2d6a4f" font-size="11" font-weight="bold">九溪牌坊</text>
+        <text x="60" y="322" text-anchor="middle" fill="#777" font-size="9">公交/打车 抵达</text>
+
+        <!-- 2. 九溪茶室 -->
+        <circle cx="190" cy="300" r="9" fill="#52b788" stroke="white" stroke-width="2"/>
+        <text x="190" y="303.5" text-anchor="middle" fill="white" font-size="9" font-weight="bold">2</text>
+        <rect x="140" y="252" width="80" height="36" rx="5" fill="white" opacity="0.92"/>
+        <text x="180" y="267" text-anchor="middle" fill="#2d6a4f" font-size="10" font-weight="bold">九溪茶室</text>
+        <text x="180" y="280" text-anchor="middle" fill="#777" font-size="8.5">休憩 · 赏茶田</text>
+
+        <!-- 3. 溪流栈道 -->
+        <circle cx="300" cy="270" r="9" fill="#52b788" stroke="white" stroke-width="2"/>
+        <text x="300" y="273.5" text-anchor="middle" fill="white" font-size="9" font-weight="bold">3</text>
+        <rect x="253" y="230" width="88" height="30" rx="5" fill="white" opacity="0.92"/>
+        <text x="297" y="243" text-anchor="middle" fill="#2d6a4f" font-size="10" font-weight="bold">十八涧溪道</text>
+        <text x="297" y="255" text-anchor="middle" fill="#777" font-size="8.5">戏水 · 赏瀑</text>
+
+        <!-- 4. 九溪烟树 -->
+        <circle cx="410" cy="245" r="9" fill="#52b788" stroke="white" stroke-width="2"/>
+        <text x="410" y="248.5" text-anchor="middle" fill="white" font-size="9" font-weight="bold">4</text>
+        <rect x="360" y="195" width="90" height="36" rx="5" fill="white" opacity="0.92"/>
+        <text x="405" y="210" text-anchor="middle" fill="#2d6a4f" font-size="10" font-weight="bold">九溪烟树</text>
+        <text x="405" y="223" text-anchor="middle" fill="#777" font-size="8.5">核心景观 📷</text>
+
+        <!-- 5. 龙井村 -->
+        <circle cx="530" cy="235" r="9" fill="#52b788" stroke="white" stroke-width="2"/>
+        <text x="530" y="238.5" text-anchor="middle" fill="white" font-size="9" font-weight="bold">5</text>
+        <rect x="478" y="178" width="84" height="42" rx="5" fill="white" opacity="0.92"/>
+        <text x="520" y="194" text-anchor="middle" fill="#2d6a4f" font-size="10" font-weight="bold">龙井村</text>
+        <text x="520" y="206" text-anchor="middle" fill="#777" font-size="8.5">品龙井茶</text>
+        <text x="520" y="216" text-anchor="middle" fill="#777" font-size="8.5">午餐休息</text>
+
+        <!-- 6. 云栖竹径 (终点) -->
+        <circle cx="680" cy="185" r="12" fill="#d62828" stroke="white" stroke-width="2.5"/>
+        <text x="680" y="189.5" text-anchor="middle" fill="white" font-size="11" font-weight="bold">终</text>
+        <rect x="618" y="130" width="88" height="42" rx="6" fill="white" opacity="0.92"/>
+        <text x="662" y="147" text-anchor="middle" fill="#d62828" font-size="11" font-weight="bold">云栖竹径</text>
+        <text x="662" y="160" text-anchor="middle" fill="#777" font-size="9">坐公交返城</text>
+        <text x="662" y="171" text-anchor="middle" fill="#777" font-size="9">Y3/Y5 路</text>
+
+        <!-- 连接线（牌坊→茶室→溪道→烟树→龙井→竹径） -->
+        <line x1="80" y1="333" x2="180" y2="309" stroke="#2d6a4f" stroke-width="1" opacity="0.3" stroke-dasharray="4,3"/>
+        <line x1="190" y1="291" x2="300" y2="270" stroke="#2d6a4f" stroke-width="1" opacity="0.3" stroke-dasharray="4,3"/>
+
+        <!-- 方位指南针 -->
+        <g transform="translate(700,370)">
+          <circle r="22" fill="white" opacity="0.85" stroke="#ccc"/>
+          <text x="0" y="-8"  text-anchor="middle" fill="#d62828" font-size="11" font-weight="bold">N</text>
+          <text x="0" y="14"  text-anchor="middle" fill="#555"    font-size="9">S</text>
+          <text x="-13" y="4" text-anchor="middle" fill="#555"    font-size="9">W</text>
+          <text x="13"  y="4" text-anchor="middle" fill="#555"    font-size="9">E</text>
+          <line x1="0" y1="-3" x2="0" y2="-16" stroke="#d62828" stroke-width="2"/>
+          <line x1="0" y1="3"  x2="0" y2="10"  stroke="#aaa"    stroke-width="1.5"/>
+        </g>
+
+        <!-- 图例 -->
+        <rect x="14" y="370" width="180" height="42" rx="8" fill="white" opacity="0.88"/>
+        <line x1="24" y1="387" x2="52" y2="387" stroke="#2d6a4f" stroke-width="3" stroke-dasharray="6,3"/>
+        <text x="58" y="391" fill="#2d6a4f" font-size="10">步道路线</text>
+        <line x1="24" y1="403" x2="52" y2="403" stroke="#4fc3f7" stroke-width="4" opacity="0.8"/>
+        <text x="58" y="407" fill="#4fc3f7" font-size="10">九溪溪流</text>
+        <circle cx="120" cy="387" r="5" fill="#2d6a4f"/>
+        <text x="130" y="391" fill="#555" font-size="10">起/终点</text>
+        <circle cx="120" cy="403" r="5" fill="#52b788"/>
+        <text x="130" y="407" fill="#555" font-size="10">途经景点</text>
+
+        <!-- 距离标注 -->
+        <text x="145" y="330" fill="#666" font-size="9.5" transform="rotate(-8,145,330)">≈ 2 km</text>
+        <text x="360" y="256" fill="#666" font-size="9.5" transform="rotate(-5,360,256)">≈ 2.5 km</text>
+        <text x="590" y="210" fill="#666" font-size="9.5" transform="rotate(-8,590,210)">≈ 2.5 km</text>
+      </svg>
+    </div>
+  </div>
+
+  <!-- 概览卡片 -->
+  <div class="section-title">行程概览</div>
+  <div class="cards" style="margin-bottom:28px">
+    <div class="card"><div class="icon">📏</div><div class="label">全程距离</div><div class="value">约 7 km</div></div>
+    <div class="card"><div class="icon">⏱</div><div class="label">所需时间</div><div class="value">3.5 ~ 4.5 h</div></div>
+    <div class="card"><div class="icon">📈</div><div class="label">累计爬升</div><div class="value">约 180 m</div></div>
+    <div class="card"><div class="icon">🥾</div><div class="label">难度</div><div class="value">轻松 ★☆☆</div></div>
+    <div class="card"><div class="icon">💰</div><div class="label">门票</div><div class="value">免费</div></div>
+    <div class="card"><div class="icon">🌿</div><div class="label">最佳季节</div><div class="value">春 / 秋</div></div>
+  </div>
+
+  <!-- 行程安排 -->
+  <div class="section-title">分段行程</div>
+  <div class="schedule">
+    <div class="schedule-row">
+      <div class="time-col"><div class="time">08:30</div></div>
+      <div class="dot-col"><div class="dot start"></div><div class="line"></div></div>
+      <div class="info-col">
+        <div class="poi-name">🚏 出发 · 九溪牌坊入口</div>
+        <div class="poi-desc">乘坐公交 Y3 路或打车至九溪入口，简单热身后开始徒步。这里是整条路线的起点，沿路有茶园景色。</div>
+      </div>
+    </div>
+    <div class="schedule-row">
+      <div class="time-col"><div class="time">09:00</div></div>
+      <div class="dot-col"><div class="dot"></div><div class="line"></div></div>
+      <div class="info-col">
+        <div class="poi-name">🍵 九溪茶室区 <span class="tag tag-rest">休息点</span></div>
+        <div class="poi-desc">沿溪而行约 1.5 km，路旁茶园连片，空气清新。可在茶室稍作停留，欣赏龙井茶田风光（0.5 h）。</div>
+      </div>
+    </div>
+    <div class="schedule-row">
+      <div class="time-col"><div class="time">09:40</div></div>
+      <div class="dot-col"><div class="dot"></div><div class="line"></div></div>
+      <div class="info-col">
+        <div class="poi-name">💧 九溪十八涧 · 溪流栈道 <span class="tag tag-view">必看</span></div>
+        <div class="poi-desc">进入峡谷溪涧段，是全程最精华的部分。山泉汇流、石阶蜿蜒，溪水清澈见底，夏季凉爽宜人，可戏水赏瀑（1 h）。</div>
+      </div>
+    </div>
+    <div class="schedule-row">
+      <div class="time-col"><div class="time">10:50</div></div>
+      <div class="dot-col"><div class="dot"></div><div class="line"></div></div>
+      <div class="info-col">
+        <div class="poi-name">🌲 九溪烟树观景台 <span class="tag tag-view">拍照打卡</span></div>
+        <div class="poi-desc">"九溪烟树"是杭州西湖十景之一，雾气弥漫时竹林与烟岚交织，景色如画。建议在此多停留拍照（0.5 h）。</div>
+      </div>
+    </div>
+    <div class="schedule-row">
+      <div class="time-col"><div class="time">11:30</div></div>
+      <div class="dot-col"><div class="dot"></div><div class="line"></div></div>
+      <div class="info-col">
+        <div class="poi-name">🏡 龙井村 · 午餐 <span class="tag tag-food">午饭</span><span class="tag tag-rest">休息</span></div>
+        <div class="poi-desc">抵达龙井村，品尝正宗龙井茶，在农家餐馆享用午饭（推荐：龙井虾仁、腌笃鲜）。休息约 1 小时。</div>
+      </div>
+    </div>
+    <div class="schedule-row">
+      <div class="time-col"><div class="time">13:00</div></div>
+      <div class="dot-col"><div class="dot"></div><div class="line"></div></div>
+      <div class="info-col">
+        <div class="poi-name">🎋 云栖竹径 · 终点 <span class="tag tag-view">必看</span></div>
+        <div class="poi-desc">穿越百年毛竹林，竹影婆娑、幽深静谧，被誉为"天下第一竹径"。全长约 1.5 km，漫步约 30 分钟。</div>
+      </div>
+    </div>
+    <div class="schedule-row">
+      <div class="time-col"><div class="time">13:30</div></div>
+      <div class="dot-col"><div class="dot end"></div></div>
+      <div class="info-col">
+        <div class="poi-name">🚌 返程</div>
+        <div class="poi-desc">在云栖竹径出口乘坐公交 Y3 / Y5 路返回西湖景区或市区，全程徒步圆满完成。</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 实用贴士 -->
+  <div class="section-title">实用贴士</div>
+  <div class="tips" style="margin-bottom:28px">
+    <ul>
+      <li>穿防滑登山鞋或运动鞋，溪边石头较滑</li>
+      <li>备足饮用水 1.5 L，沿途补给点有限</li>
+      <li>防晒霜 + 遮阳帽，春秋阳光较强</li>
+      <li>雨天建议携带雨衣，溪流水位可能上涨</li>
+      <li>早上 8 点前出发可避开人流高峰</li>
+      <li>全程手机地图可用，信号良好</li>
+      <li>带少量现金，龙井村部分摊位不支持扫码</li>
+      <li>景区内禁止明火，不可野炊烧烤</li>
+      <li>拍摄茶园需尊重农户意愿，不要踩踏茶苗</li>
+      <li>如体力不佳，可在龙井村提前打车返回</li>
+    </ul>
+  </div>
+
+  <!-- 交通信息 -->
+  <div class="section-title">交通信息</div>
+  <div class="transport">
+    <div class="transport-card">
+      <h3>🚌 前往起点（九溪）</h3>
+      <p>
+        • 公交 <strong>Y3 路</strong>：西湖边 → 九溪站下车<br>
+        • 公交 <strong>4 路</strong>：西湖文化广场 → 九溪<br>
+        • 打车/骑行：导航"九溪烟树景区"，停车方便<br>
+        • 共享单车：适合从西湖骑行前往（约 6 km）
+      </p>
+    </div>
+    <div class="transport-card">
+      <h3>🚌 终点返回（云栖竹径）</h3>
+      <p>
+        • 公交 <strong>Y3 路</strong>：云栖竹径 → 西湖方向<br>
+        • 公交 <strong>Y5 路</strong>：云栖竹径 → 市区<br>
+        • 打车：出口处即可打车，约 15 分钟到西湖<br>
+        • 顺风车：高德/滴滴均可在此上车
+      </p>
+    </div>
+  </div>
+
+  <footer>
+    🌿 愿你徒步愉快，享受杭州山水之美 · 路线仅供参考，请以实际情况为准
+  </footer>
+
+</div>
+</body>
+</html>
